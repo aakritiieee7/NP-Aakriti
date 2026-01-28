@@ -23,6 +23,13 @@
 #'
 #' @return bar plot
 #' @export
+# Apply Title Case to labels (from theme config)
+if (exists("apply_text_case")) {
+  if ("Description" %in% names(data)) data$Description <- apply_text_case(data$Description, "title")
+  if ("Term" %in% names(data)) data$Term <- apply_text_case(data$Term, "title")
+  if ("pathway" %in% names(data)) data$pathway <- apply_text_case(data$pathway, "title")
+}
+
 #'
 #' @importFrom ggplot2 ggplot
 #' @importFrom ggplot2 geom_bar
@@ -77,8 +84,8 @@ go_barplot <- function(go.diff,
                        facet = TRUE,
                        color = c("#A40545", "#7FCBA4", "#4B65AF"),
                        bar.width = 0.8,
-                       text.size = 12,
-                       text.width = 30,
+                       text.size = 14, # Increased from 12
+                       text.width = 35, # Increased from 30
                        title = "GO enrichment of cluster", ...) {
   # data processing
   if (isS4(go.diff)) {
@@ -97,6 +104,14 @@ go_barplot <- function(go.diff,
     go_enrich$p.adjust,
     decreasing = TRUE
   ), ]
+
+  # Apply Title Case to descriptions AFTER data processing
+  if (exists("apply_text_case")) {
+    go_enrich$Description <- apply_text_case(go_enrich$Description, "title")
+  } else {
+    go_enrich$Description <- tools::toTitleCase(tolower(go_enrich$Description))
+  }
+
   go_enrich$Description <- factor(go_enrich$Description,
     levels = go_enrich$Description
   )

@@ -11,6 +11,13 @@
 #' @return bubble plot
 #' @export
 #'
+# Apply Title Case to labels (from theme config)
+if (exists("apply_text_case")) {
+  if ("Description" %in% names(data)) data$Description <- apply_text_case(data$Description, "title")
+  if ("Term" %in% names(data)) data$Term <- apply_text_case(data$Term, "title")
+  if ("pathway" %in% names(data)) data$pathway <- apply_text_case(data$pathway, "title")
+}
+
 #' @importFrom ggplot2 ggplot
 #' @importFrom ggplot2 scale_color_manual
 #' @importFrom ggplot2 geom_point
@@ -50,7 +57,7 @@
 bubble_plot <- function(data,
                         padjust = 0.05,
                         top = 20,
-                        text.size = 4,
+                        text.size = 12, # Increased from 4
                         color = "RdBu", ...) {
   # data processing
   if (isS4(data)) {
@@ -65,6 +72,14 @@ bubble_plot <- function(data,
   kk.se$logP <- -log10(kk.se$p.adjust)
   kk.se <- kk.se %>% dplyr::arrange(desc(logP))
   kk.se <- kk.se[1:top, ] %>% drop_na()
+
+  # Apply Title Case AFTER data processing
+  if (exists("apply_text_case")) {
+    kk.se$Description <- apply_text_case(kk.se$Description, "title")
+  } else {
+    kk.se$Description <- tools::toTitleCase(tolower(kk.se$Description))
+  }
+
   col_bar2 <- colorRampPalette(brewer.pal(8, color))(length(kk.se$Description))
   names(col_bar2) <- kk.se$Description
 
@@ -77,7 +92,7 @@ bubble_plot <- function(data,
       color = Description
     )) +
     scale_color_manual(values = col_bar2) +
-    theme_test() +
+    theme_test(base_size = 14) + # Added base_size
     guides(colour = "none") +
     ggrepel::geom_label_repel(
       aes(
@@ -85,12 +100,15 @@ bubble_plot <- function(data,
         y = Description,
         label = Description
       ),
-      size = text.size,
-      nudge_y = 0.1
+      size = text.size / 3, # Scale for label size
+      nudge_y = 0.1,
+      family = if (exists("get_font_family")) get_font_family() else "Helvetica"
     ) +
     theme(
       axis.text.y = element_blank(),
-      axis.ticks.y = element_blank()
+      axis.ticks.y = element_blank(),
+      axis.text.x = element_text(size = text.size, face = "bold"),
+      axis.title = element_text(size = text.size + 2, face = "bold")
     ) +
     xlim(c(min(kk.se$logP) - 2, max(kk.se$logP) + 2)) +
     xlab(bquote(-Log[10] ~ italic("Padjust"))) +

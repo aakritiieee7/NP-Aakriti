@@ -171,7 +171,7 @@ def read_phytochemical_csv(csv_path: str, max_compounds: Optional[int] = None) -
 # =========================
 # Selenium setup
 # =========================
-def setup_driver(headless: bool = False) -> webdriver.Chrome:
+def setup_driver(headless: bool = True) -> webdriver.Chrome:
     opts = Options()
     ua = random.choice(USER_AGENTS)
     opts.add_argument(f"user-agent={ua}")

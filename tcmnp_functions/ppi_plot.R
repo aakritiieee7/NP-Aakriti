@@ -18,7 +18,7 @@ ppi_plot <- function(
   data,
   node.color = "RdBu",
   node.size = c(1, 10),
-  label.size = 4,
+  label.size = 5, # Increased from 4
   label.degree = 5,
   label.repel = TRUE,
   edge.color = "lightgrey",
@@ -26,7 +26,6 @@ ppi_plot <- function(
   rem.dis.inter = FALSE,
   graph.layout = "kk"
 ) {
-
   # ---------------------------
   # Sanity checks
   # ---------------------------
@@ -68,12 +67,19 @@ ppi_plot <- function(
   )
 
   igraph::V(net)$degree <- igraph::degree(net)
-  igraph::V(net)$size   <- igraph::degree(net)
-  igraph::E(net)$score  <- igraph::E(net)$weight
+  igraph::V(net)$size <- igraph::degree(net)
+  igraph::E(net)$score <- igraph::E(net)$weight
 
   # ---------------------------
   # Plot
   # ---------------------------
+  # Apply Title Case to labels (from theme config)
+  if (exists("apply_text_case")) {
+    if ("Description" %in% names(data)) data$Description <- apply_text_case(data$Description, "title")
+    if ("Term" %in% names(data)) data$Term <- apply_text_case(data$Term, "title")
+    if ("pathway" %in% names(data)) data$pathway <- apply_text_case(data$pathway, "title")
+  }
+
   p <- ggraph::ggraph(net, layout = graph.layout) +
 
     ggraph::geom_edge_fan(

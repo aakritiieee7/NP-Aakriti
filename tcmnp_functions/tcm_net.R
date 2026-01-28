@@ -34,6 +34,13 @@
 #' @importFrom dplyr select
 #' @importFrom dplyr mutate
 #' @importFrom dplyr rename
+# Apply Title Case to labels (from theme config)
+if (exists("apply_text_case")) {
+  if ("Description" %in% names(data)) data$Description <- apply_text_case(data$Description, "title")
+  if ("Term" %in% names(data)) data$Term <- apply_text_case(data$Term, "title")
+  if ("pathway" %in% names(data)) data$pathway <- apply_text_case(data$pathway, "title")
+}
+
 #' @importFrom dplyr count
 #' @importFrom ggraph ggraph
 #' @importFrom ggraph geom_edge_fan
@@ -54,47 +61,72 @@
 #'   dplyr::select(herb, molecule, target) %>%
 #'   sample_n(100, replace = FALSE) %>%
 #'   as.data.frame()
-#' tcm_net(network.data, node.color= "Spectral",
-#' label.degree = 0, rem.dis.inter = TRUE,graph.layout = "fr",
-#' label.size = 3)
+#' tcm_net(network.data,
+#'   node.color = "Spectral",
+#'   label.degree = 0, rem.dis.inter = TRUE, graph.layout = "fr",
+#'   label.size = 3
+#' )
 #' }
 tcm_net <- function(network.data,
                     node.size = c(2, 8),
-                    label.size = 3.5,
+                    label.size = 5, # Increased from 3.5
                     label.repel = TRUE,
                     edge.color = "grey80",
                     edge.width = c(0.3, 1.5),
                     graph.layout = "fr",
                     label.degree = 0,
-                    max.overlaps=10,
-                    rem.dis.inter = FALSE){
-
+                    max.overlaps = 10,
+                    rem.dis.inter = FALSE) {
   # -----------------------------
   # Data cleaning
   # -----------------------------
   network.data <- as.data.frame(network.data)
 
-  network.data$herb     <- stringr::str_trim(as.character(network.data$herb))
+  network.data$herb <- stringr::str_trim(as.character(network.data$herb))
   network.data$molecule <- stringr::str_trim(as.character(network.data$molecule))
-  network.data$target   <- stringr::str_trim(as.character(network.data$target))
+  network.data$target <- stringr::str_trim(as.character(network.data$target))
 
   network.data <- unique(network.data)
 
   # -----------------------------
-  # Edge list with FIXED weights
+  # Edge list with Flow-Preserving Coloring
   # -----------------------------
-  links <- rbind(
-    network.data %>%
-      dplyr::select(herb, molecule) %>%
-      dplyr::rename(from = herb, to = molecule) %>%
-      dplyr::mutate(weight = 0.5),
 
-    network.data %>%
-      dplyr::select(molecule, target) %>%
-      dplyr::rename(from = molecule, to = target) %>%
-      dplyr::mutate(weight = 0.2)
-  ) %>%
-    dplyr::distinct()
+  # 1. Define Herb Colors
+  herbs <- unique(network.data$herb)
+  n_herbs <- length(herbs)
+  herb_cols <- scales::hue_pal()(n_herbs)
+  names(herb_cols) <- herbs
+
+  # 2. Build Edge List with Source Tracking
+  # Herb -> Molecule (Source is Herb)
+  e1 <- network.data %>%
+    dplyr::select(herb, molecule) %>%
+    dplyr::distinct() %>%
+    dplyr::mutate(
+      from = herb,
+      to = molecule,
+      weight = 0.5,
+      source_herb = herb,
+      edge_color = herb_cols[herb]
+    ) %>%
+    dplyr::select(from, to, weight, edge_color)
+
+  # Molecule -> Target (Source is Herb - keep row-wise flow)
+  e2 <- network.data %>%
+    dplyr::select(herb, molecule, target) %>% # Keep herb to know source
+    dplyr::distinct() %>% # Unique flow paths
+    dplyr::mutate(
+      from = molecule,
+      to = target,
+      weight = 0.2,
+      source_herb = herb,
+      edge_color = herb_cols[herb] # Color by the Herb that leads to this interaction
+    ) %>%
+    dplyr::select(from, to, weight, edge_color)
+
+  links <- rbind(e1, e2)
+  # Note: distinctive rows in links mean parallel edges if (from, to) are same but color differs
 
   # -----------------------------
   # Nodes
@@ -118,98 +150,96 @@ tcm_net <- function(network.data,
   igraph::V(net)$class <- ifelse(
     igraph::V(net)$name %in% network.data$herb, "Herb",
     ifelse(igraph::V(net)$name %in% network.data$molecule,
-           "Molecule", "Target")
+      "Molecule", "Target"
+    )
   )
 
   # -----------------------------
-# Plot
-# -----------------------------
-p <- ggraph::ggraph(net, layout = graph.layout) +
+  # Plot
+  # -----------------------------
+  p <- ggraph::ggraph(net, layout = graph.layout) +
 
-  # Edges
-  ggraph::geom_edge_link0(
-    aes(edge_linewidth = weight),
-    edge_colour = edge.color,
-    alpha = 0.35
-  ) +
+    # Edges - Fan to show multiple sources (parallel edges)
+    ggraph::geom_edge_fan(
+      aes(edge_linewidth = weight, edge_colour = I(edge_color)),
+      alpha = 0.6,
+      spread = 0.5, # Small spread for parallel lines
+      show.legend = FALSE
+    ) +
 
-  # Nodes
-  ggraph::geom_node_point(
-    aes(size = degree, shape = class, color = class),
-    alpha = 1
-  ) +
+    # Nodes
+    ggraph::geom_node_point(
+      aes(size = degree, shape = class, color = class),
+      alpha = 1
+    ) +
 
-  # Labels (ALL nodes)
-  ggraph::geom_node_text(
-    aes(label = name, color = class),
-    size = label.size,
-    repel = label.repel,
-    max.overlaps = 10,
-    show.legend = FALSE
-  ) +
+    # Labels (ALL nodes, filtered by degree if needed)
+    ggraph::geom_node_text(
+      aes(label = name, color = class, filter = degree >= label.degree),
+      size = label.size,
+      repel = label.repel,
+      max.overlaps = Inf, # Force show all labels even if overlapping
+      show.legend = FALSE
+    ) +
 
-  # Class colors
-  ggplot2::scale_color_manual(
-    values = c(
-      "Herb"     = "#009E73",
-      "Molecule" = "#0072B2",
-      "Target"   = "#D55E00"
+    # Class colors
+    ggplot2::scale_color_manual(
+      values = c(
+        "Herb"     = "#009E73",
+        "Molecule" = "#0072B2",
+        "Target"   = "#D55E00"
+      )
+    ) +
+
+    # Node size (NO degree legend)
+    ggplot2::scale_size_continuous(
+      range = node.size,
+      guide = "none"
+    ) +
+
+    # Edge width (NO legend)
+    ggraph::scale_edge_width(
+      range = edge.width,
+      guide = "none"
+    ) +
+
+    # Base theme
+    ggraph::theme_graph(base_family = "sans") +
+
+    # Legend styling + placement
+    ggplot2::theme(
+      legend.justification = c("left", "top"),
+      legend.background = ggplot2::element_rect(
+        fill = "white",
+        colour = NA
+      ),
+      legend.box.background = ggplot2::element_rect(
+        fill = "grey80",
+        colour = NA
+      ),
+      legend.title = ggplot2::element_text(
+        size = 16,
+        face = "bold"
+      ),
+      legend.text = ggplot2::element_text(
+        size = 14,
+        face = "bold"
+      ),
+      legend.key.size = grid::unit(1.4, "cm"),
+      legend.spacing.y = grid::unit(0.6, "cm"),
+      plot.margin = ggplot2::margin(20, 150, 20, 20)
+    ) +
+
+    # Allow drawing outside panel
+    ggplot2::coord_cartesian(clip = "off") +
+    ggplot2::guides(
+      color = ggplot2::guide_legend(
+        override.aes = list(size = 8)
+      ),
+      shape = ggplot2::guide_legend(
+        override.aes = list(size = 22)
+      )
     )
-  ) +
 
-  # Node size (NO degree legend)
-  ggplot2::scale_size_continuous(
-    range = node.size,
-    guide = "none"
-  ) +
-
-  # Edge width (NO legend)
-  ggraph::scale_edge_width(
-    range = edge.width,
-    guide = "none"
-  ) +
-
-  # Base theme
-  ggraph::theme_graph() +
-
-  # Legend styling + placement
-  ggplot2::theme(
-    legend.justification = c("left", "top"),
-
-    legend.background = ggplot2::element_rect(
-      fill = "white",
-      colour = NA
-    ),
-    legend.box.background = ggplot2::element_rect(
-      fill = "grey80",
-      colour = NA
-    ),
-
-    legend.title = ggplot2::element_text(
-      size = 16,
-      face = "bold"
-    ),
-    legend.text = ggplot2::element_text(
-      size = 14,
-      face = "bold"
-    ),
-
-    legend.key.size = grid::unit(1.4, "cm"),
-    legend.spacing.y = grid::unit(0.6, "cm"),
-
-    plot.margin = ggplot2::margin(20, 150, 20, 20)
-  ) +
-
-  # Allow drawing outside panel
-  ggplot2::coord_cartesian(clip = "off") +
-  ggplot2::guides(
-  color = ggplot2::guide_legend(
-    override.aes = list(size = 8) 
-  ),
-  shape = ggplot2::guide_legend(
-    override.aes = list(size = 22)
-  )
-)
-
-return(p)}
-  
+  return(p)
+}

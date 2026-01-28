@@ -26,6 +26,13 @@
 #'
 #' @return A ggplot object representing the bar plot.
 #' @export
+# Apply Title Case to labels (from theme config)
+if (exists("apply_text_case")) {
+  if ("Description" %in% names(data)) data$Description <- apply_text_case(data$Description, "title")
+  if ("Term" %in% names(data)) data$Term <- apply_text_case(data$Term, "title")
+  if ("pathway" %in% names(data)) data$pathway <- apply_text_case(data$pathway, "title")
+}
+
 #'
 #' @importFrom ggplot2 ggplot
 #' @importFrom ggplot2 geom_bar
@@ -107,7 +114,6 @@ degree_plot <- function(data,
       scale_y_continuous(expand = c(0, 0))
     return(p)
   } else if (plot.set == "horizontal") {
-
     p <- ggplot(data = data_sorted, aes(x = id, y = degree, fill = type)) +
       geom_bar(stat = "identity", width = 0.8) +
       scale_fill_manual(values = color) +
@@ -118,10 +124,8 @@ degree_plot <- function(data,
       scale_y_continuous(expand = c(0, 0))
 
     return(p)
-
   } else {
     print("The plot.set must be 'horizontal' or 'vertical'.")
     return(NULL)
   }
 }
-

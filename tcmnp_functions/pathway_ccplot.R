@@ -56,14 +56,28 @@ pathway_ccplot <- function(data,
                            color.node = "Paired",
                            color.alpha = 0.5,
                            text.size = c(3, 4),
+                           out_dir = NULL,            # 👈 ADDED
+                           file_prefix = "pathway_ccplot", # 👈 ADDED
                            ...) {
-  # data processing
+
+  suppressPackageStartupMessages({
+    library(dplyr)
+    library(tidyr)
+    library(tidygraph)
+    library(ggraph)
+    library(ggplot2)
+    library(RColorBrewer)
+  })
+
+  # -------------------------------
+  # Data processing (UNCHANGED)
+  # -------------------------------
   if (isS4(data)) {
     data <- data@result %>% tidyr::drop_na()
   } else if (is.data.frame(data)) {
     data <- data %>% tidyr::drop_na()
   } else {
-    print("The data format must be S4 object or data frame.")
+    stop("❌ data must be S4 or data.frame")
   }
 
   if (all(c("ID", "Description", "geneID") %in% colnames(data))) {
@@ -71,104 +85,87 @@ pathway_ccplot <- function(data,
     if (label.name == "ID") {
       kegg.df <- path %>%
         dplyr::select(ID, geneID) %>%
-        dplyr::mutate(frequen = as.numeric("1")) %>%
-        dplyr::distinct()
-    } else if (label.name == "Description") {
-      kegg.df <- path %>%
-        dplyr::select(Description, geneID) %>%
-        dplyr::mutate(frequen = as.numeric("1")) %>%
+        dplyr::mutate(frequen = 1) %>%
         dplyr::distinct()
     } else {
-      print("The label.name is 'ID' or 'Description'. ")
+      kegg.df <- path %>%
+        dplyr::select(Description, geneID) %>%
+        dplyr::mutate(frequen = 1) %>%
+        dplyr::distinct()
     }
   } else {
     path <- separate_rows(data[1:top, ], 2, sep = "/")
     colnames(path)[1:2] <- c(label.name, "geneID")
     kegg.df <- path %>%
-      dplyr::mutate(frequen = as.numeric("1")) %>%
+      dplyr::mutate(frequen = 1) %>%
       dplyr::distinct()
   }
 
-  # use the selected terms to build the data format
-  se_index <- c(ifelse(label.name == "ID", "ID", "Description"), "geneID")
+  se_index <- c(label.name, "geneID")
   value <- tail(colnames(kegg.df), 1)
-  # build a data frame of nodes
-  if (length(se_index) < 2) {
-    stop("please specify at least two index column(s)")
-  } else {
-    list <- lapply(seq_along(se_index), function(i) {
-      dots <- se_index[1:i]
-      kegg.df %>%
-        dplyr::group_by(.dots = dots) %>%
-        dplyr::summarise(
-          node.size = sum(.data[[value]]),
-          node.level = se_index[[i]],
-          node.count = n(),
-          .groups = 'drop'
-        ) %>%
-        dplyr::mutate(
-          node.short_name = as.character(.data[[dots[[length(dots)]]]]),
-          node.branch = as.character(.data[[dots[[1]]]])
-        ) %>%
-        tidyr::unite(node.name, dots, sep = "/")
-    })
-    newdata <- do.call("rbind", list) %>% as.data.frame()
-    newdata$node.level <- factor(newdata$node.level, levels = se_index)
-    if (is.null(root)) {
-      nodes_kegg <- newdata
-    } else {
-      root_data <- data.frame(
-        node.name = root,
-        node.size = sum(kegg.df[[value]]),
-        node.level = root,
-        node.count = 1,
-        node.short_name = root,
-        node.branch = root,
-        stringsAsFactors = F
-      )
-      newdata <- rbind(root_data, newdata)
-      newdata$node.level <- factor(newdata$node.level, levels = c(root, se_index))
-      nodes_kegg <- newdata
-    }
-  }
-  # build a data frame of edges
-  if (length(se_index) < 2) {
-    stop("please specify at least two index column(s)")
-  } else if (length(se_index) == 2) {
-    newdata2 <- kegg.df %>%
-      dplyr::mutate(from = .data[[se_index[[1]]]]) %>%
-      tidyr::unite(., to, se_index, sep = "/") %>%
-      dplyr::select(., from, to) %>%
-      dplyr::mutate_at(., c("from", "to"), as.character)
-  } else {
-    list <- lapply(seq(2, length(se_index)), function(i) {
-      dots <- se_index[1:i]
-      kegg.df %>%
-        tidyr::unite(from, dots[-length(dots)], sep = "/", remove = FALSE) %>%
-        tidyr::unite(., to, dots, sep = "/") %>%
-        dplyr::select(., from, to) %>%
-        dplyr::mutate_at(., c("from", "to"), as.character)
-    })
-    newdata2 <- do.call("rbind", list) %>% as.data.frame(newdata2)
+
+  # -------------------------------
+  # Build nodes
+  # -------------------------------
+  list_nodes <- lapply(seq_along(se_index), function(i) {
+    dots <- se_index[1:i]
+    kegg.df %>%
+      dplyr::group_by(across(all_of(dots))) %>%
+      dplyr::summarise(
+        node.size = sum(.data[[value]]),
+        node.level = se_index[[i]],
+        node.count = n(),
+        .groups = "drop"
+      ) %>%
+      dplyr::mutate(
+        node.short_name = as.character(.data[[dots[[length(dots)]]]]),
+        node.branch = as.character(.data[[dots[[1]]]])
+      ) %>%
+      tidyr::unite(node.name, all_of(dots), sep = "/")
+  })
+
+  nodes_kegg <- bind_rows(list_nodes)
+
+  if (!is.null(root)) {
+    root_node <- data.frame(
+      node.name = root,
+      node.size = sum(kegg.df[[value]]),
+      node.level = root,
+      node.count = 1,
+      node.short_name = root,
+      node.branch = root
+    )
+    nodes_kegg <- bind_rows(root_node, nodes_kegg)
   }
 
-  if (is.null(root)) {
-    edges_kegg <- newdata2
-  } else {
-    root_data <- kegg.df %>%
-      dplyr::group_by(.dots = se_index[[1]]) %>%
-      dplyr::summarise(count = n(), .groups = 'drop') %>%
-      dplyr::mutate(from = root, to = as.character(.data[[se_index[[1]]]])) %>%
-      dplyr::select(., from, to)
-    edges_kegg <- rbind(root_data, newdata2)
+  # -------------------------------
+  # Build edges
+  # -------------------------------
+  edges_kegg <- kegg.df %>%
+    dplyr::mutate(from = .data[[label.name]]) %>%
+    tidyr::unite(to, all_of(se_index), sep = "/") %>%
+    dplyr::select(from, to)
+
+  if (!is.null(root)) {
+    root_edges <- kegg.df %>%
+      dplyr::distinct(.data[[label.name]]) %>%
+      dplyr::mutate(from = root, to = .data[[label.name]]) %>%
+      dplyr::select(from, to)
+    edges_kegg <- bind_rows(root_edges, edges_kegg)
   }
+
   graph <- tidygraph::tbl_graph(nodes_kegg, edges_kegg)
-  # start drawing
-  ggraph(graph, layout = "dendrogram", circular = TRUE) +
-    ggraph::geom_edge_diagonal(aes(color = node1.node.branch),
+
+  # -------------------------------
+  # Plot (UNCHANGED STYLE)
+  # -------------------------------
+  p <- ggraph(graph, layout = "dendrogram", circular = TRUE) +
+    geom_edge_diagonal(
+      aes(color = node1.node.branch),
       alpha = color.alpha
     ) +
-    ggraph::geom_node_point(aes(size = node.size, color = node.branch),
+    geom_node_point(
+      aes(size = node.size, color = node.branch),
       alpha = color.alpha
     ) +
     coord_fixed() +
@@ -177,24 +174,17 @@ pathway_ccplot <- function(data,
     scale_size(range = c(0.5, 30)) +
     geom_node_text(
       aes(
-        x = 1.0175 * x,
-        y = 1.0175 * y,
+        x = 1.02 * x,
+        y = 1.02 * y,
         label = node.short_name,
         angle = -((-node_angle(x, y) + 90) %% 180) + 90,
-        filter = leaf, color = node.branch
+        filter = leaf,
+        color = node.branch
       ),
-      size = text.size[1], hjust = "outward"
+      size = text.size[1],
+      hjust = "outward"
     ) +
-    scale_colour_manual(values = rep(
-      RColorBrewer::brewer.pal(8, color.node),
-      ifelse(label.name == "ID",
-        length(unique(path$ID)),
-        length(unique(path$"Description"))
-      )
-    )) +
-    # add inner circle text label
     geom_node_text(
-      show.legend = FALSE,
       aes(
         label = node.short_name,
         filter = !leaf,
@@ -203,6 +193,28 @@ pathway_ccplot <- function(data,
       fontface = "bold",
       size = text.size[2]
     ) +
-    xlim(-1.2, 1.2)+
+    scale_colour_manual(values =
+      rep(
+        RColorBrewer::brewer.pal(8, color.node),
+        length(unique(nodes_kegg$node.branch))
+      )
+    ) +
+    xlim(-1.2, 1.2) +
     ylim(-1.2, 1.2)
+
+  # -------------------------------
+  # SAVE IN FLOW (KEY ADDITION)
+  # -------------------------------
+  if (!is.null(out_dir)) {
+    dir.create(out_dir, showWarnings = FALSE)
+    fname <- file.path(
+      out_dir,
+      paste0(file_prefix, "_", ifelse(is.null(root), "pathway", root), ".png")
+    )
+    ggsave(fname, p, width = 8, height = 8, dpi = 300)
+    cat("✔ pathway_ccplot saved:", fname, "\n")
+  }
+
+  return(p)
 }
+

@@ -45,21 +45,32 @@ def main():
     df["probability"] = pd.to_numeric(df["probability"], errors="coerce")
     df["max_tc"] = pd.to_numeric(df["max_tc"], errors="coerce")
 
+    df["p_value"] = pd.to_numeric(df["p_value"], errors="coerce")
+
     # -------------------------------
-    # Apply user-defined thresholds
+    # Apply HARDCODED thresholds (Medium Strategy)
     # -------------------------------
+    # Strategy:
+    # PPB3 Probability >= 0.8
+    # SEA P-Value < 1e-5 AND Max_Tc > 0.4
+    
+    args.ppb3 = 0.8
+    args.sea_tc = 0.4
+    args.sea_pval = 1e-5
+    
     df_filtered = df[
         (
             (df["database"] == "SwissTargetPrediction") &
-            (df["probability"] >= args.swiss)
+            (df["probability"] >= 0.1) # Default low cutoff for Swiss if present
         ) |
         (
             (df["database"] == "PPB3") &
-            (df["probability"] >= args.ppb3)
+            (df["probability"] >= 0.8)
         ) |
         (
             (df["database"] == "SEA") &
-            (df["max_tc"] >= args.sea)
+            (df["max_tc"] > 0.4) & 
+            (df["p_value"] < 1e-5)
         )
     ].copy()
 
