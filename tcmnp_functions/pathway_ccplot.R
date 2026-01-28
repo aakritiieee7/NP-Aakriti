@@ -56,10 +56,9 @@ pathway_ccplot <- function(data,
                            color.node = "Paired",
                            color.alpha = 0.5,
                            text.size = c(3, 4),
-                           out_dir = NULL,            # 👈 ADDED
+                           out_dir = NULL, # 👈 ADDED
                            file_prefix = "pathway_ccplot", # 👈 ADDED
                            ...) {
-
   suppressPackageStartupMessages({
     library(dplyr)
     library(tidyr)
@@ -193,11 +192,12 @@ pathway_ccplot <- function(data,
       fontface = "bold",
       size = text.size[2]
     ) +
-    scale_colour_manual(values =
-      rep(
-        RColorBrewer::brewer.pal(8, color.node),
-        length(unique(nodes_kegg$node.branch))
-      )
+    scale_colour_manual(
+      values =
+        rep(
+          RColorBrewer::brewer.pal(8, color.node),
+          length(unique(nodes_kegg$node.branch))
+        )
     ) +
     xlim(-1.2, 1.2) +
     ylim(-1.2, 1.2)
@@ -207,6 +207,15 @@ pathway_ccplot <- function(data,
   # -------------------------------
   if (!is.null(out_dir)) {
     dir.create(out_dir, showWarnings = FALSE)
+
+    # Save CSV for Cytoscape
+    csv_name <- file.path(
+      out_dir,
+      paste0(file_prefix, "_", ifelse(is.null(root), "pathway", root), ".csv")
+    )
+    write.csv(kegg.df, csv_name, row.names = FALSE)
+    # cat("✔ pathway_ccplot data saved:", csv_name, "\n")
+
     fname <- file.path(
       out_dir,
       paste0(file_prefix, "_", ifelse(is.null(root), "pathway", root), ".png")
@@ -217,4 +226,3 @@ pathway_ccplot <- function(data,
 
   return(p)
 }
-
