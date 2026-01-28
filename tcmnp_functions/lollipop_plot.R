@@ -111,6 +111,14 @@ lollipop_plot <- function(
   if (!is.null(out_dir)) {
     dir.create(out_dir, showWarnings = FALSE)
 
+    # 3a. Save CSV data (for Cytoscape/Table)
+    csv_file <- file.path(
+      out_dir,
+      paste0(file_prefix, "_", gsub(" ", "_", title), ".csv")
+    )
+    write.csv(df, csv_file, row.names = FALSE)
+    cat("✔ Enrichment data saved:", csv_file, "\n")
+
     out_file <- file.path(
       out_dir,
       paste0(file_prefix, "_", gsub(" ", "_", title), ".png")
