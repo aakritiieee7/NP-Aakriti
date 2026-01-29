@@ -1,0 +1,39 @@
+# Python,Microsoft
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+outputs/
+archive/
+*.log
+1_input_data/*.csv
+1_input_data/*.txt
+!1_input_data/phytochemical_input.csv
+
+# Logs
+*.log
+VennDiagram*.log
+analysis_output.log
+fresh_analysis_output.log
+final_run.log
+final_run_v2.log
+
+# R
+.Rhistory
+.RData
+.Rproj.user
+
+# Temp
+typography_test/
